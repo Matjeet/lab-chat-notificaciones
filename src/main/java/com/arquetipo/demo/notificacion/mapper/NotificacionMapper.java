@@ -2,6 +2,7 @@ package com.arquetipo.demo.notificacion.mapper;
 
 import com.arquetipo.demo.notificacion.amqp.dto.NotificacionEntrante;
 import com.arquetipo.demo.notificacion.domain.Notificacion;
+import com.arquetipo.demo.notificacion.web.dto.NotificacionResponse;
 import org.springframework.stereotype.Component;
 
 /**
@@ -15,6 +16,14 @@ public class NotificacionMapper {
 	// Debe coincidir con NotificadorAmqp.TIPO_SOLICITUD en chat-conversacion -- sin
 	// referencia compartida entre repos, hay que mantenerlo sincronizado a mano si cambia.
 	private static final String TIPO_SOLICITUD = "solicitud";
+
+	public NotificacionResponse toResponse(Notificacion notificacion) {
+		return new NotificacionResponse(
+				notificacion.getRemitente(),
+				notificacion.getTipo(),
+				notificacion.isLeida(),
+				notificacion.getCreatedAt());
+	}
 
 	public Notificacion toEntity(NotificacionEntrante mensaje) {
 		Notificacion notificacion = new Notificacion();

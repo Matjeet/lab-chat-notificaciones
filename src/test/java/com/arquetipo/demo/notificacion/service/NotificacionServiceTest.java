@@ -8,13 +8,21 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import static org.mockito.ArgumentMatchers.eq;
+
 import com.arquetipo.demo.notificacion.amqp.dto.NotificacionEntrante;
 import com.arquetipo.demo.notificacion.domain.Notificacion;
 import com.arquetipo.demo.notificacion.mapper.NotificacionMapper;
 import com.arquetipo.demo.notificacion.repository.NotificacionRepository;
+import com.arquetipo.demo.notificacion.web.dto.PageResponse;
 import com.arquetipo.demo.registro.grpc.RegistroGrpcClient;
+import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 /**
  * Prueba las reglas de negocio de {@link NotificacionService} de forma aislada, con
@@ -114,5 +122,38 @@ class NotificacionServiceTest {
 		service.registrar(new NotificacionEntrante(null, "ana", "solicitud", null));
 
 		verify(repository).save(any());
+	}
+
+	@Test
+	void listaNotificaciones_delegaEnElRepositorioYMapeaLaPagina() {
+		Notificacion notificacion = new Notificacion();
+		notificacion.setId(1L);
+		notificacion.setRemitente("mateo");
+		notificacion.setReceptor("ana");
+		notificacion.setTipo("solicitud");
+		notificacion.setContenido("mateo te ha enviado una solicitud de chat");
+		notificacion.setLeida(false);
+		notificacion.setCreatedAt(Instant.parse("2026-09-25T20:00:00Z"));
+		Pageable pageable = PageRequest.of(0, 20);
+		when(repository.findByReceptor(eq("ana"), eq(pageable)))
+				.thenReturn(new PageImpl<>(List.of(notificacion), pageable, 1));
+
+		PageResponse<?> pagina = service.listaNotificaciones("ana", pageable);
+
+		assertThat(pagina.content()).hasSize(1);
+		assertThat(pagina.totalElements()).isEqualTo(1);
+	}
+
+	@Test
+	void listaNotificaciones_sinNotificaciones_devuelveVacia() {
+		Pageable pageable = PageRequest.of(0, 20);
+		when(repository.findByReceptor(eq("fantasma"), eq(pageable)))
+				.thenReturn(new PageImpl<>(List.of(), pageable, 0));
+
+		PageResponse<?> pagina = service.listaNotificaciones("fantasma", pageable);
+
+		assertThat(pagina.content()).isEmpty();
+		assertThat(pagina.empty()).isTrue();
+		verify(registroClient, never()).existeUsername(any());
 	}
 }

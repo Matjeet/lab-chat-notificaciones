@@ -58,11 +58,14 @@ dependencies {
 	// --- Documentacion de API (OpenAPI / Swagger UI) ---
 	implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${springdocVersion}"
 
-	// --- gRPC (cliente de chat-registro: valida que remitente/receptor existan antes de
-	// persistir una notificacion) --- Este servicio no expone gRPC propio, solo consume.
+	// --- gRPC: servidor propio (ListaNotificaciones, unico protocolo expuesto por este
+	// servicio) + cliente de chat-registro (valida que remitente/receptor existan antes de
+	// persistir una notificacion). El servidor se levanta a mano (com.arquetipo.demo.common.grpc),
+	// sin starter de terceros, mismo patron que chat-registro.
 	implementation "io.grpc:grpc-netty-shaded:${grpcVersion}"
 	implementation "io.grpc:grpc-protobuf:${grpcVersion}"
 	implementation "io.grpc:grpc-stub:${grpcVersion}"
+	implementation "io.grpc:grpc-services:${grpcVersion}"  // habilita el servicio de reflexion (grpcurl sin .proto)
 	implementation "com.google.protobuf:protobuf-java:${protobufVersion}"
 	compileOnly 'jakarta.annotation:jakarta.annotation-api'  // @Generated en los stubs generados
 
@@ -79,6 +82,8 @@ dependencies {
 	testCompileOnly 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.projectlombok:lombok'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	testImplementation "io.grpc:grpc-testing:${grpcVersion}"  // InProcessServerBuilder para probar el servicio gRPC sin red real
+	testImplementation "io.grpc:grpc-inprocess:${grpcVersion}"
 }
 
 tasks.named('test') {

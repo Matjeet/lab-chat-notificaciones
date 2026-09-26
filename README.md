@@ -1,16 +1,17 @@
 # chat-notificaciones
 
 Servicio que **consume por RabbitMQ** los eventos que publican otros microservicios del
-sistema (hoy, solo `chat-conversacion`: solicitudes de chat nuevas) y los persiste como
-notificaciones para el usuario receptor en MySQL. No expone REST ni gRPC propios todavía —
-solo un listener de RabbitMQ y `Actuator` por HTTP.
+sistema (hoy, solo `chat-conversacion`: solicitudes de chat nuevas), los persiste como
+notificaciones para el usuario receptor en MySQL, y expone su lectura por **gRPC**
+(`ListaNotificaciones`, paginada). No expone REST propio — solo gRPC y `Actuator` por HTTP.
 
 > Estado actual: primera implementación (nace como copia del arquetipo MVC compartido, ver
 > `chat-registro/` y `chat-conversacion/`). Cubre la recepción de notificaciones de tipo
 > `"solicitud"` desde el exchange `chat.notificaciones` (declarado por `chat-conversacion`),
-> la validación de `remitente`/`receptor` contra `chat-registro` por gRPC, y la persistencia en
-> la tabla `notificaciones`. Pendiente, a propósito: cualquier forma de consultar o marcar como
-> leídas las notificaciones (ni REST ni gRPC todavía) — este servicio hoy solo escribe.
+> la validación de `remitente`/`receptor` contra `chat-registro` por gRPC, la persistencia en
+> la tabla `notificaciones`, y la consulta paginada de esa tabla por receptor
+> (`ListaNotificaciones`, gRPC). Pendiente, a propósito: marcar una notificación como leída — no
+> hay ningún rpc para eso todavía (por eso hoy `leida` siempre se queda en `false`).
 
 ## Arquitectura
 
@@ -20,8 +21,9 @@ Paquete por feature bajo `com.arquetipo.demo`, mismo patrón que `chat-registro/
 - `common/` — infraestructura transversal: `config/JpaAuditingConfig` (poblado automático de
   `created_at`/`updated_at`), `config/RabbitMqConfig` (exchange, cola y binding, ver más
   abajo), `env/DotenvEnvironmentPostProcessor` (carga `.env`, mismo código que
-  `chat-registro`) y `exception/ServiceUnavailableException` (gRPC `UNAVAILABLE` al hablar con
-  `chat-registro`).
+  `chat-registro`), `exception/ServiceUnavailableException` (gRPC `UNAVAILABLE` al hablar con
+  `chat-registro`) y `grpc/` (arranca/detiene el servidor gRPC embebido, mismo patrón que
+  `chat-registro`/`chat-conversacion`, genérico — no sabe nada de notificaciones).
 - `notificacion/` — la feature:
   - `domain/Notificacion` — entidad JPA: `remitente` (nulo si no aplica), `receptor`
     (obligatorio), `tipo` (obligatorio, sin validar contra una lista cerrada — cualquier string
@@ -34,12 +36,20 @@ Paquete por feature bajo `com.arquetipo.demo`, mismo patrón que `chat-registro/
     publicador empiece a mandarlo — ver el Javadoc de la clase).
   - `mapper/NotificacionMapper` — traduce el mensaje (`solicitante`/`solicitado`) a la entidad
     (`remitente`/`receptor`) y determina el `contenido` a partir del `tipo` cuando el mensaje
-    no lo trae.
-  - `service/NotificacionService` — valida el mensaje (`tipo` y `receptor` obligatorios,
-    `remitente`/`receptor` deben existir en `chat-registro` vía `RegistroGrpcClient`) y
-    persiste. Un mensaje inválido (falta un campo obligatorio, o el usuario no existe) se
-    **descarta** (se loguea, no se persiste, no se relanza nada); si `chat-registro` no
-    responde, la excepción se deja propagar para que RabbitMQ reencole el mensaje.
+    no lo trae; y la entidad a `NotificacionResponse` (lectura, ver más abajo).
+  - `service/NotificacionService` — `registrar`: valida el mensaje (`tipo` y `receptor`
+    obligatorios, `remitente`/`receptor` deben existir en `chat-registro` vía
+    `RegistroGrpcClient`) y persiste. Un mensaje inválido (falta un campo obligatorio, o el
+    usuario no existe) se **descarta** (se loguea, no se persiste, no se relanza nada); si
+    `chat-registro` no responde, la excepción se deja propagar para que RabbitMQ reencole el
+    mensaje. `listaNotificaciones`: pagina las notificaciones de un receptor (no valida que
+    exista en chat-registro, igual que el historial/lista de chats de chat-conversacion).
+  - `web/dto/NotificacionResponse` + `web/dto/PageResponse` — DTO de lectura y envoltorio de
+    paginación (mismo patrón que en chat-conversacion), usados por `NotificacionGrpcController`.
+  - `grpc/NotificacionGrpcController` + `grpc/NotificacionGrpcMapper` — `ListaNotificaciones`
+    (paginada por página/tamaño, no por cursor — este servicio es JPA/MySQL, no la agregación
+    de Mongo que motivó el cursor de `ListaChats` en chat-conversacion); mismo patrón que
+    `ConversacionGrpcController#historial`.
 - `registro/grpc/` — `RegistroGrpcClient`: cliente gRPC de `chat-registro` (copia local y
   mínima de su `.proto`, solo `ExisteUsername`), mismo patrón que el cliente equivalente en
   `chat-conversacion`/`chat-gateway`.
@@ -60,13 +70,30 @@ autoconfigurado por `spring-boot-starter-amqp`): si el broker se reinicia, o si 
 arranca antes que `chat-conversacion` haya declarado el exchange, la declaración es idempotente
 y no se pierde nada que ya esté en la cola.
 
+### gRPC: `ListaNotificaciones`
+
+Único protocolo que expone este servicio (puerto `9092`, ver `src/main/proto/notificacion.proto`).
+Devuelve las notificaciones de un `receptor`, paginadas (página/tamaño, no cursor), con:
+
+- El nombre del **remitente** — `optional string`, ausente (no `""`) cuando la notificación no
+  tiene remitente; comprobar con `hasRemitente()`, no asumir cadena vacía.
+- El **tipo**.
+- Si está **leída**.
+- La **fecha de creación** (`created_at`, ISO-8601 UTC).
+
+No valida que `receptor` exista en `chat-registro` — mismo criterio que `Historial`/`ListaChats`
+en chat-conversacion (operaciones de lectura, a diferencia de `CrearSolicitud`, que sí valida
+porque *crea* algo): un receptor que no existe, o que no tiene notificaciones, simplemente
+devuelve una página vacía. Orden por defecto: más reciente primero (`createdAt` descendente);
+`sort` en la petición permite cambiarlo (`"campo,direccion"`, igual que `Historial`).
+
 ## Stack
 
 | Área | Elección |
 |------|----------|
 | Framework | Spring Boot 4.1.1 (`spring-boot-starter-webmvc`, solo para `Actuator`) |
 | Mensajería | RabbitMQ (`spring-boot-starter-amqp`) — consumo, no publica nada |
-| gRPC | `io.grpc` a mano (sin starter de terceros), solo cliente — este servicio no expone gRPC propio |
+| gRPC | `io.grpc` a mano (sin starter de terceros), servidor embebido (`ListaNotificaciones`) + cliente de `chat-registro` |
 | Lenguaje | Java 25 (toolchain de Gradle) |
 | Build | Gradle (wrapper incluido) |
 | Persistencia | Spring Data JPA + Hibernate; MySQL (runtime), H2 en memoria (tests) |
@@ -123,6 +150,7 @@ algún mensaje real, una instancia de `chat-conversacion` publicando solicitudes
 
 | Recurso | URL |
 |---------|-----|
+| gRPC (`ListaNotificaciones`) | localhost:9092 — ver `src/main/proto/notificacion.proto` |
 | Swagger UI | http://localhost:8083/swagger-ui.html |
 | OpenAPI JSON | http://localhost:8083/v3/api-docs |
 | Actuator health | http://localhost:8083/actuator/health |
@@ -134,7 +162,7 @@ Tests: `./gradlew test` · Empaquetar: `./gradlew bootJar`
 
 `Dockerfile` es multi-stage (build con `eclipse-temurin:25-jdk` + Gradle, runtime con
 `eclipse-temurin:25-jre`, corre como usuario no root) — funciona igual con Docker o con
-[Podman](https://podman.io/). Expone `8083` (HTTP, solo `Actuator`).
+[Podman](https://podman.io/). Expone `8083` (HTTP, solo `Actuator`) y `9092` (gRPC).
 
 ```bash
 podman build -t chat-notificaciones .
@@ -147,7 +175,7 @@ Desktop es `host.docker.internal`):
 
 ```bash
 podman run -d --name chat-notificaciones \
-  -p 8083:8083 \
+  -p 8083:8083 -p 9092:9092 \
   -e DB_URL="jdbc:mysql://host.containers.internal:3306/chat_notificaciones?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8" \
   -e RABBITMQ_HOST="host.containers.internal" \
   -e REGISTRO_GRPC_HOST="host.containers.internal" \

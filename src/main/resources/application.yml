@@ -52,6 +52,16 @@ servicios:
     grpc-host: ${REGISTRO_GRPC_HOST:localhost}
     grpc-port: ${REGISTRO_GRPC_PORT:9090}
 
+grpc:
+  server:
+    # Servidor gRPC embebido (com.arquetipo.demo.common.grpc) -- unico protocolo que expone
+    # este servicio (ListaNotificaciones). false desactiva por completo su arranque (los tests
+    # lo hacen, ver src/test/resources).
+    enabled: ${GRPC_SERVER_ENABLED:true}
+    # Puerto TCP propio, independiente de server.port (HTTP, solo usado hoy por Actuator).
+    # 9092: el siguiente libre tras el 9091 de chat-conversacion (ver PUERTOS.md).
+    port: ${GRPC_SERVER_PORT:9092}
+
 app:
   amqp:
     # Exchange (topic) ya creado por chat-conversacion, del que este servicio solo consume

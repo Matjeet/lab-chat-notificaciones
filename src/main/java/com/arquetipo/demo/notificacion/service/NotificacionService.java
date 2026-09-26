@@ -4,8 +4,12 @@ import com.arquetipo.demo.notificacion.amqp.dto.NotificacionEntrante;
 import com.arquetipo.demo.notificacion.domain.Notificacion;
 import com.arquetipo.demo.notificacion.mapper.NotificacionMapper;
 import com.arquetipo.demo.notificacion.repository.NotificacionRepository;
+import com.arquetipo.demo.notificacion.web.dto.NotificacionResponse;
+import com.arquetipo.demo.notificacion.web.dto.PageResponse;
 import com.arquetipo.demo.registro.grpc.RegistroGrpcClient;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 /**
@@ -19,6 +23,9 @@ import org.springframework.stereotype.Service;
  * metodo la deja propagar sin atraparla: el listener no la atrapa tampoco, asi que RabbitMQ
  * reencola el mensaje para reintentarlo mas tarde (comportamiento por defecto del contenedor
  * ante una excepcion no manejada).
+ *
+ * <p>Tambien expone la lectura ({@link #listaNotificaciones}), usada por
+ * {@code NotificacionGrpcController}.
  */
 @Slf4j
 @Service
@@ -63,5 +70,19 @@ public class NotificacionService {
 		Notificacion notificacion = mapper.toEntity(mensaje);
 		Notificacion guardada = repository.save(notificacion);
 		log.debug("<< registrar() -> OK, id={}", guardada.getId());
+	}
+
+	/**
+	 * Notificaciones de {@code receptor}, paginadas. No valida que {@code receptor} exista en
+	 * chat-registro (igual que el historial/lista de chats de chat-conversacion): un receptor
+	 * que no existe, o que no tiene notificaciones, simplemente devuelve una pagina vacia.
+	 */
+	public PageResponse<NotificacionResponse> listaNotificaciones(String receptor, Pageable pageable) {
+		log.debug(">> listaNotificaciones(receptor='{}')", receptor);
+		Page<NotificacionResponse> pagina = repository.findByReceptor(receptor, pageable)
+				.map(mapper::toResponse);
+		PageResponse<NotificacionResponse> respuesta = PageResponse.from(pagina);
+		log.debug("<< listaNotificaciones() -> OK, totalElements={}", respuesta.totalElements());
+		return respuesta;
 	}
 }
