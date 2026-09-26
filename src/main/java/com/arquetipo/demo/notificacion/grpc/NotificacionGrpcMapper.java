@@ -44,6 +44,7 @@ public class NotificacionGrpcMapper {
 
 	NotificacionItem aNotificacionItem(NotificacionResponse response) {
 		NotificacionItem.Builder builder = NotificacionItem.newBuilder()
+				.setId(response.id())
 				.setTipo(response.tipo())
 				.setLeida(response.leida())
 				.setCreatedAt(response.createdAt().toString());

@@ -56,7 +56,7 @@ class NotificacionGrpcControllerTest {
 	@Test
 	void listaNotificaciones_delegaEnElServicioYMapeaLaPagina() {
 		NotificacionResponse notificacion = new NotificacionResponse(
-				"mateo", "solicitud", false, Instant.parse("2026-09-25T20:00:00Z"));
+				1L, "mateo", "solicitud", false, Instant.parse("2026-09-25T20:00:00Z"));
 		PageResponse<NotificacionResponse> pagina =
 				new PageResponse<>(List.of(notificacion), 0, 20, 1, 1, true, true, false);
 		when(service.listaNotificaciones(eq("ana"), any())).thenReturn(pagina);
@@ -65,6 +65,7 @@ class NotificacionGrpcControllerTest {
 				ListaNotificacionesRequest.newBuilder().setReceptor("ana").build());
 
 		assertThat(respuesta.getContentCount()).isEqualTo(1);
+		assertThat(respuesta.getContent(0).getId()).isEqualTo(1L);
 		assertThat(respuesta.getContent(0).getRemitente()).isEqualTo("mateo");
 		assertThat(respuesta.getContent(0).getTipo()).isEqualTo("solicitud");
 		assertThat(respuesta.getContent(0).getLeida()).isFalse();
@@ -76,7 +77,7 @@ class NotificacionGrpcControllerTest {
 	@Test
 	void listaNotificaciones_sinRemitente_noTraeElCampoRemitente() {
 		NotificacionResponse notificacion = new NotificacionResponse(
-				null, "sistema", true, Instant.parse("2026-09-25T20:00:00Z"));
+				2L, null, "sistema", true, Instant.parse("2026-09-25T20:00:00Z"));
 		PageResponse<NotificacionResponse> pagina =
 				new PageResponse<>(List.of(notificacion), 0, 20, 1, 1, true, true, false);
 		when(service.listaNotificaciones(eq("ana"), any())).thenReturn(pagina);

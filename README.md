@@ -75,6 +75,7 @@ y no se pierde nada que ya esté en la cola.
 Único protocolo que expone este servicio (puerto `9092`, ver `src/main/proto/notificacion.proto`).
 Devuelve las notificaciones de un `receptor`, paginadas (página/tamaño, no cursor), con:
 
+- El **id** de la notificación.
 - El nombre del **remitente** — `optional string`, ausente (no `""`) cuando la notificación no
   tiene remitente; comprobar con `hasRemitente()`, no asumir cadena vacía.
 - El **tipo**.

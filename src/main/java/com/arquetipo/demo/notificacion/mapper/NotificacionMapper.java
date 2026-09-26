@@ -19,6 +19,7 @@ public class NotificacionMapper {
 
 	public NotificacionResponse toResponse(Notificacion notificacion) {
 		return new NotificacionResponse(
+				notificacion.getId(),
 				notificacion.getRemitente(),
 				notificacion.getTipo(),
 				notificacion.isLeida(),

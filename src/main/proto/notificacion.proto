@@ -33,14 +33,15 @@ message ListaNotificacionesRequest {
 
 // Una notificacion, tal como la ve su receptor.
 message NotificacionItem {
+  int64 id = 1;
   // Username de quien origino la notificacion. No todos los tipos tienen remitente (ver
   // Notificacion#remitente): ausente si no aplica -- usar has_remitente(), no asumir "" como
   // "sin remitente".
-  optional string remitente = 1;
-  string tipo = 2;
-  bool leida = 3;
+  optional string remitente = 2;
+  string tipo = 3;
+  bool leida = 4;
   // Instante de creacion en UTC, ISO-8601 (ej. "2026-09-25T20:53:47.441193Z").
-  string created_at = 4;
+  string created_at = 5;
 }
 
 message ListaNotificacionesResponse {

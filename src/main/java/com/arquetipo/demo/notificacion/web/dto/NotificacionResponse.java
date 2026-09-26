@@ -7,5 +7,5 @@ import java.time.Instant;
  * {@code notificacion/grpc/NotificacionGrpcController}). {@code remitente} puede ser nulo, ver
  * {@code Notificacion#remitente}.
  */
-public record NotificacionResponse(String remitente, String tipo, boolean leida, Instant createdAt) {
+public record NotificacionResponse(Long id, String remitente, String tipo, boolean leida, Instant createdAt) {
 }
