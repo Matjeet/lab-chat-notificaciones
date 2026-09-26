@@ -1,0 +1,118 @@
+package com.arquetipo.demo.notificacion.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.arquetipo.demo.notificacion.amqp.dto.NotificacionEntrante;
+import com.arquetipo.demo.notificacion.domain.Notificacion;
+import com.arquetipo.demo.notificacion.mapper.NotificacionMapper;
+import com.arquetipo.demo.notificacion.repository.NotificacionRepository;
+import com.arquetipo.demo.registro.grpc.RegistroGrpcClient;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+/**
+ * Prueba las reglas de negocio de {@link NotificacionService} de forma aislada, con
+ * {@link NotificacionRepository} y {@link RegistroGrpcClient} mockeados (mismo patron que
+ * {@code SolicitudChatServiceTest} en chat-conversacion) y el mapper real (es puro, sin
+ * dependencias).
+ */
+class NotificacionServiceTest {
+
+	private NotificacionRepository repository;
+	private RegistroGrpcClient registroClient;
+	private NotificacionService service;
+
+	@BeforeEach
+	void iniciar() {
+		repository = mock(NotificacionRepository.class);
+		registroClient = mock(RegistroGrpcClient.class);
+		service = new NotificacionService(repository, new NotificacionMapper(), registroClient);
+	}
+
+	@Test
+	void registrar_solicitudConUsuariosValidos_persisteConContenidoPredeterminado() {
+		when(registroClient.existeUsername("ana")).thenReturn(true);
+		when(registroClient.existeUsername("mateo")).thenReturn(true);
+		when(repository.save(any(Notificacion.class))).thenAnswer(invocacion -> {
+			Notificacion notificacion = invocacion.getArgument(0);
+			notificacion.setId(1L);
+			return notificacion;
+		});
+
+		service.registrar(new NotificacionEntrante("mateo", "ana", "solicitud", null));
+
+		verify(repository).save(argThat(notificacion -> {
+			assertThat(notificacion.getRemitente()).isEqualTo("mateo");
+			assertThat(notificacion.getReceptor()).isEqualTo("ana");
+			assertThat(notificacion.getTipo()).isEqualTo("solicitud");
+			assertThat(notificacion.getContenido()).isEqualTo("mateo te ha enviado una solicitud de chat");
+			assertThat(notificacion.isLeida()).isFalse();
+			return true;
+		}));
+	}
+
+	@Test
+	void registrar_conContenidoYaEnElMensaje_respetaEseContenido() {
+		when(registroClient.existeUsername("ana")).thenReturn(true);
+		when(registroClient.existeUsername("mateo")).thenReturn(true);
+		when(repository.save(any(Notificacion.class))).thenAnswer(invocacion -> invocacion.getArgument(0));
+
+		service.registrar(new NotificacionEntrante("mateo", "ana", "solicitud", "contenido a medida"));
+
+		verify(repository).save(argThat(notificacion -> {
+			assertThat(notificacion.getContenido()).isEqualTo("contenido a medida");
+			return true;
+		}));
+	}
+
+	@Test
+	void registrar_sinTipo_seDescartaSinPersistirNiConsultarRegistro() {
+		service.registrar(new NotificacionEntrante("mateo", "ana", null, null));
+
+		verify(registroClient, never()).existeUsername(any());
+		verify(repository, never()).save(any());
+	}
+
+	@Test
+	void registrar_sinReceptor_seDescartaSinPersistirNiConsultarRegistro() {
+		service.registrar(new NotificacionEntrante("mateo", null, "solicitud", null));
+
+		verify(registroClient, never()).existeUsername(any());
+		verify(repository, never()).save(any());
+	}
+
+	@Test
+	void registrar_conReceptorInexistente_seDescartaSinPersistir() {
+		when(registroClient.existeUsername("fantasma")).thenReturn(false);
+
+		service.registrar(new NotificacionEntrante("mateo", "fantasma", "solicitud", null));
+
+		verify(repository, never()).save(any());
+	}
+
+	@Test
+	void registrar_conRemitenteInexistente_seDescartaSinPersistir() {
+		when(registroClient.existeUsername("ana")).thenReturn(true);
+		when(registroClient.existeUsername("fantasma")).thenReturn(false);
+
+		service.registrar(new NotificacionEntrante("fantasma", "ana", "solicitud", null));
+
+		verify(repository, never()).save(any());
+	}
+
+	@Test
+	void registrar_sinRemitente_noConsultaRegistroParaElRemitenteYPersiste() {
+		when(registroClient.existeUsername("ana")).thenReturn(true);
+		when(repository.save(any(Notificacion.class))).thenAnswer(invocacion -> invocacion.getArgument(0));
+
+		service.registrar(new NotificacionEntrante(null, "ana", "solicitud", null));
+
+		verify(repository).save(any());
+	}
+}
