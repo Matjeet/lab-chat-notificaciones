@@ -6,11 +6,14 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.arquetipo.demo.common.exception.ResourceNotFoundException;
 import com.arquetipo.demo.notificacion.service.NotificacionService;
 import com.arquetipo.demo.notificacion.web.dto.NotificacionResponse;
 import com.arquetipo.demo.notificacion.web.dto.PageResponse;
 import io.grpc.ManagedChannel;
 import io.grpc.Server;
+import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
 import java.time.Instant;
@@ -21,8 +24,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Prueba el endpoint gRPC de lista de notificaciones sobre un servidor in-process (sin red
- * real) -- mismo patron que {@code ConversacionGrpcControllerTest} en chat-conversacion.
+ * Prueba los endpoints gRPC de este servicio sobre un servidor in-process (sin red real) --
+ * mismo patron que {@code ConversacionGrpcControllerTest} en chat-conversacion.
  * {@link NotificacionService} va mockeado.
  */
 class NotificacionGrpcControllerTest {
@@ -98,5 +101,38 @@ class NotificacionGrpcControllerTest {
 
 		assertThat(respuesta.getContentCount()).isZero();
 		assertThat(respuesta.getEmpty()).isTrue();
+	}
+
+	@Test
+	void actualizarLeida_conIdExistente_delegaEnElServicioYDevuelveElItemActualizado() {
+		NotificacionResponse actualizada = new NotificacionResponse(
+				1L, "mateo", "solicitud", true, Instant.parse("2026-09-25T20:00:00Z"));
+		when(service.actualizarLeida(1L, true)).thenReturn(actualizada);
+
+		NotificacionItem respuesta = stub.actualizarLeida(
+				ActualizarLeidaRequest.newBuilder().setId(1L).setLeida(true).build());
+
+		assertThat(respuesta.getId()).isEqualTo(1L);
+		assertThat(respuesta.getLeida()).isTrue();
+	}
+
+	@Test
+	void actualizarLeida_conIdInexistente_devuelveNotFound() {
+		when(service.actualizarLeida(99L, true))
+				.thenThrow(new ResourceNotFoundException("Notificacion", 99L));
+
+		StatusRuntimeException excepcion = catchStatusRuntimeException(() -> stub.actualizarLeida(
+				ActualizarLeidaRequest.newBuilder().setId(99L).setLeida(true).build()));
+
+		assertThat(excepcion.getStatus().getCode()).isEqualTo(Status.Code.NOT_FOUND);
+	}
+
+	private static StatusRuntimeException catchStatusRuntimeException(Runnable llamada) {
+		try {
+			llamada.run();
+		} catch (StatusRuntimeException ex) {
+			return ex;
+		}
+		throw new AssertionError("Se esperaba un StatusRuntimeException y no se lanzo ninguno");
 	}
 }

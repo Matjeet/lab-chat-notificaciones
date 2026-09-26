@@ -1,6 +1,7 @@
 package com.arquetipo.demo.notificacion.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
@@ -10,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import static org.mockito.ArgumentMatchers.eq;
 
+import com.arquetipo.demo.common.exception.ResourceNotFoundException;
 import com.arquetipo.demo.notificacion.amqp.dto.NotificacionEntrante;
 import com.arquetipo.demo.notificacion.domain.Notificacion;
 import com.arquetipo.demo.notificacion.mapper.NotificacionMapper;
@@ -18,6 +20,7 @@ import com.arquetipo.demo.notificacion.web.dto.PageResponse;
 import com.arquetipo.demo.registro.grpc.RegistroGrpcClient;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.PageImpl;
@@ -155,5 +158,37 @@ class NotificacionServiceTest {
 		assertThat(pagina.content()).isEmpty();
 		assertThat(pagina.empty()).isTrue();
 		verify(registroClient, never()).existeUsername(any());
+	}
+
+	@Test
+	void actualizarLeida_conIdExistente_actualizaYPersiste() {
+		Notificacion notificacion = new Notificacion();
+		notificacion.setId(1L);
+		notificacion.setRemitente("mateo");
+		notificacion.setReceptor("ana");
+		notificacion.setTipo("solicitud");
+		notificacion.setContenido("mateo te ha enviado una solicitud de chat");
+		notificacion.setLeida(false);
+		notificacion.setCreatedAt(Instant.parse("2026-09-25T20:00:00Z"));
+		when(repository.findById(1L)).thenReturn(Optional.of(notificacion));
+		when(repository.save(any(Notificacion.class))).thenAnswer(invocacion -> invocacion.getArgument(0));
+
+		var respuesta = service.actualizarLeida(1L, true);
+
+		assertThat(respuesta.leida()).isTrue();
+		verify(repository).save(argThat(guardada -> {
+			assertThat(guardada.isLeida()).isTrue();
+			return true;
+		}));
+	}
+
+	@Test
+	void actualizarLeida_conIdInexistente_lanzaResourceNotFoundExceptionSinPersistir() {
+		when(repository.findById(99L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.actualizarLeida(99L, true))
+				.isInstanceOf(ResourceNotFoundException.class);
+
+		verify(repository, never()).save(any());
 	}
 }

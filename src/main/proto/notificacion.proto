@@ -17,6 +17,12 @@ service NotificacionGrpcService {
   // validan a quien preguntan): un receptor que no existe, o que no tiene notificaciones,
   // simplemente devuelve una pagina vacia.
   rpc ListaNotificaciones (ListaNotificacionesRequest) returns (ListaNotificacionesResponse);
+
+  // Marca una notificacion como leida o no leida. NOT_FOUND si "id" no corresponde a ninguna
+  // notificacion existente. No valida quien hace la llamada (ver nota de autenticacion
+  // pendiente en CLAUDE.md, seccion chat-notificaciones): cualquiera que conozca el id puede
+  // cambiar su estado, igual que el resto de rpc de este servicio no valida identidad.
+  rpc ActualizarLeida (ActualizarLeidaRequest) returns (NotificacionItem);
 }
 
 message ListaNotificacionesRequest {
@@ -42,6 +48,12 @@ message NotificacionItem {
   bool leida = 4;
   // Instante de creacion en UTC, ISO-8601 (ej. "2026-09-25T20:53:47.441193Z").
   string created_at = 5;
+}
+
+message ActualizarLeidaRequest {
+  int64 id = 1;
+  // Nuevo valor de "leida" (0 = false = no leida, 1 = true = leida).
+  bool leida = 2;
 }
 
 message ListaNotificacionesResponse {

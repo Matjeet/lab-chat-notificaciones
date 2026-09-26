@@ -2,16 +2,18 @@
 
 Servicio que **consume por RabbitMQ** los eventos que publican otros microservicios del
 sistema (hoy, solo `chat-conversacion`: solicitudes de chat nuevas), los persiste como
-notificaciones para el usuario receptor en MySQL, y expone su lectura por **gRPC**
-(`ListaNotificaciones`, paginada). No expone REST propio — solo gRPC y `Actuator` por HTTP.
+notificaciones para el usuario receptor en MySQL, y expone su lectura y actualización por
+**gRPC** (`ListaNotificaciones`, paginada, y `ActualizarLeida`). No expone REST propio — solo
+gRPC y `Actuator` por HTTP.
 
 > Estado actual: primera implementación (nace como copia del arquetipo MVC compartido, ver
 > `chat-registro/` y `chat-conversacion/`). Cubre la recepción de notificaciones de tipo
 > `"solicitud"` desde el exchange `chat.notificaciones` (declarado por `chat-conversacion`),
 > la validación de `remitente`/`receptor` contra `chat-registro` por gRPC, la persistencia en
-> la tabla `notificaciones`, y la consulta paginada de esa tabla por receptor
-> (`ListaNotificaciones`, gRPC). Pendiente, a propósito: marcar una notificación como leída — no
-> hay ningún rpc para eso todavía (por eso hoy `leida` siempre se queda en `false`).
+> la tabla `notificaciones`, la consulta paginada de esa tabla por receptor
+> (`ListaNotificaciones`, gRPC) y marcar una notificación como leída/no leída
+> (`ActualizarLeida`, gRPC). Pendiente, a propósito: la autenticación — ningún rpc de este
+> servicio valida quién hace la llamada (ver CLAUDE.md).
 
 ## Arquitectura
 
@@ -21,8 +23,9 @@ Paquete por feature bajo `com.arquetipo.demo`, mismo patrón que `chat-registro/
 - `common/` — infraestructura transversal: `config/JpaAuditingConfig` (poblado automático de
   `created_at`/`updated_at`), `config/RabbitMqConfig` (exchange, cola y binding, ver más
   abajo), `env/DotenvEnvironmentPostProcessor` (carga `.env`, mismo código que
-  `chat-registro`), `exception/ServiceUnavailableException` (gRPC `UNAVAILABLE` al hablar con
-  `chat-registro`) y `grpc/` (arranca/detiene el servidor gRPC embebido, mismo patrón que
+  `chat-registro`), `exception/{ServiceUnavailableException,ResourceNotFoundException}` (gRPC
+  `UNAVAILABLE` al hablar con `chat-registro`; `NOT_FOUND` cuando `ActualizarLeida` recibe un
+  `id` que no existe) y `grpc/` (arranca/detiene el servidor gRPC embebido, mismo patrón que
   `chat-registro`/`chat-conversacion`, genérico — no sabe nada de notificaciones).
 - `notificacion/` — la feature:
   - `domain/Notificacion` — entidad JPA: `remitente` (nulo si no aplica), `receptor`
@@ -44,12 +47,15 @@ Paquete por feature bajo `com.arquetipo.demo`, mismo patrón que `chat-registro/
     `chat-registro` no responde, la excepción se deja propagar para que RabbitMQ reencole el
     mensaje. `listaNotificaciones`: pagina las notificaciones de un receptor (no valida que
     exista en chat-registro, igual que el historial/lista de chats de chat-conversacion).
+    `actualizarLeida`: cambia el booleano `leida` de una notificacion existente por su `id`
+    (`ResourceNotFoundException` si no existe).
   - `web/dto/NotificacionResponse` + `web/dto/PageResponse` — DTO de lectura y envoltorio de
     paginación (mismo patrón que en chat-conversacion), usados por `NotificacionGrpcController`.
   - `grpc/NotificacionGrpcController` + `grpc/NotificacionGrpcMapper` — `ListaNotificaciones`
     (paginada por página/tamaño, no por cursor — este servicio es JPA/MySQL, no la agregación
-    de Mongo que motivó el cursor de `ListaChats` en chat-conversacion); mismo patrón que
-    `ConversacionGrpcController#historial`.
+    de Mongo que motivó el cursor de `ListaChats` en chat-conversacion; mismo patrón que
+    `ConversacionGrpcController#historial`) y `ActualizarLeida` (`NOT_FOUND` si el `id` no
+    existe, mismo patrón que `CrearSolicitud`).
 - `registro/grpc/` — `RegistroGrpcClient`: cliente gRPC de `chat-registro` (copia local y
   mínima de su `.proto`, solo `ExisteUsername`), mismo patrón que el cliente equivalente en
   `chat-conversacion`/`chat-gateway`.
@@ -70,10 +76,13 @@ autoconfigurado por `spring-boot-starter-amqp`): si el broker se reinicia, o si 
 arranca antes que `chat-conversacion` haya declarado el exchange, la declaración es idempotente
 y no se pierde nada que ya esté en la cola.
 
-### gRPC: `ListaNotificaciones`
+### gRPC: `ListaNotificaciones` y `ActualizarLeida`
 
-Único protocolo que expone este servicio (puerto `9092`, ver `src/main/proto/notificacion.proto`).
-Devuelve las notificaciones de un `receptor`, paginadas (página/tamaño, no cursor), con:
+Los dos únicos protocolos que expone este servicio (puerto `9092`, ver
+`src/main/proto/notificacion.proto`).
+
+**`ListaNotificaciones`** devuelve las notificaciones de un `receptor`, paginadas
+(página/tamaño, no cursor), con:
 
 - El **id** de la notificación.
 - El nombre del **remitente** — `optional string`, ausente (no `""`) cuando la notificación no
@@ -87,6 +96,12 @@ en chat-conversacion (operaciones de lectura, a diferencia de `CrearSolicitud`, 
 porque *crea* algo): un receptor que no existe, o que no tiene notificaciones, simplemente
 devuelve una página vacía. Orden por defecto: más reciente primero (`createdAt` descendente);
 `sort` en la petición permite cambiarlo (`"campo,direccion"`, igual que `Historial`).
+
+**`ActualizarLeida`** marca una notificación (por `id`) como leída o no leída (`leida`, booleano
+— `0`/`false` = no leída, `1`/`true` = leída) y devuelve el `NotificacionItem` actualizado.
+`NOT_FOUND` si `id` no corresponde a ninguna notificación existente. No valida quién hace la
+llamada — igual que el resto de rpc de este servicio, no hay autenticación todavía (ver
+CLAUDE.md).
 
 ## Stack
 
