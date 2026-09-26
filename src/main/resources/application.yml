@@ -1,28 +1,40 @@
 spring:
   application:
-    name: demo
+    name: chat-notificaciones
 
+  # Instancia MySQL centralizada y COMPARTIDA por todos los microservicios.
+  # Este servicio usa su propio esquema y su propio usuario (ver src/main/resources/db/bootstrap.sql).
+  # Las credenciales se sobreescriben por variables de entorno en cada despliegue.
   datasource:
-    url: jdbc:h2:mem:appdb;DB_CLOSE_DELAY=-1;MODE=LEGACY
-    username: sa
-    password: ""
+    url: ${DB_URL:jdbc:mysql://localhost:3306/chat_notificaciones?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8}
+    username: ${DB_USERNAME:chat_notificaciones_svc}
+    password: ${DB_PASSWORD:chat_notificaciones_pw}
+
+  # El esquema lo gestiona Flyway con las migraciones de src/main/resources/db/migration.
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
 
   jpa:
     open-in-view: false
     hibernate:
-      ddl-auto: create-drop
-    defer-datasource-initialization: true
+      # Hibernate NO toca el esquema: solo comprueba que las tablas cuadran con las entidades.
+      # El DDL lo aplica Flyway. Override con JPA_DDL_AUTO solo en casos puntuales.
+      ddl-auto: ${JPA_DDL_AUTO:validate}
     properties:
       hibernate.format_sql: true
 
-  sql:
-    init:
-      mode: embedded
-
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
+  # RabbitMQ: consumo de eventos (hoy, solicitudes de chat nuevas publicadas por
+  # chat-conversacion), ver com.arquetipo.demo.common.config.RabbitMqConfig /
+  # notificacion.amqp.NotificacionListener. La conexion la autoconfigura
+  # spring-boot-starter-amqp a partir de estas propiedades y es perezosa: el arranque de la
+  # app no depende de que RabbitMQ ya este levantado.
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
 
   data:
     web:
@@ -31,8 +43,37 @@ spring:
         max-page-size: 100
         one-indexed-parameters: false
 
+# Direccion gRPC de chat-registro: chat-notificaciones es cliente de su rpc ExisteUsername (ver
+# com.arquetipo.demo.registro.grpc.RegistroGrpcClient), para validar remitente/receptor antes
+# de persistir una notificacion. Mismo nombre de propiedad que usa chat-gateway/chat-conversacion
+# para lo mismo.
+servicios:
+  registro:
+    grpc-host: ${REGISTRO_GRPC_HOST:localhost}
+    grpc-port: ${REGISTRO_GRPC_PORT:9090}
+
+grpc:
+  server:
+    # Servidor gRPC embebido (com.arquetipo.demo.common.grpc) -- unico protocolo que expone
+    # este servicio (ListaNotificaciones). false desactiva por completo su arranque (los tests
+    # lo hacen, ver src/test/resources).
+    enabled: ${GRPC_SERVER_ENABLED:true}
+    # Puerto TCP propio, independiente de server.port (HTTP, solo usado hoy por Actuator).
+    # 9092: el siguiente libre tras el 9091 de chat-conversacion (ver PUERTOS.md).
+    port: ${GRPC_SERVER_PORT:9092}
+
+app:
+  amqp:
+    # Exchange (topic) ya creado por chat-conversacion, del que este servicio solo consume
+    # (ver RabbitMqConfig). La cola y el binding SI los declara y los posee este servicio.
+    notificaciones-exchange: ${RABBITMQ_NOTIFICACIONES_EXCHANGE:chat.notificaciones}
+    notificaciones-queue: ${RABBITMQ_NOTIFICACIONES_QUEUE:chat-notificaciones}
+    # Comodin: cubre "notificacion.solicitud" (el unico tipo hoy) y cualquier tipo futuro sin
+    # tener que tocar el binding.
+    notificaciones-routing-key: ${RABBITMQ_NOTIFICACIONES_ROUTING_KEY:notificacion.#}
+
 server:
-  port: 8080
+  port: 8083
   error:
     include-message: never
     include-stacktrace: never
