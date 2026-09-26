@@ -6,16 +6,20 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 /**
- * Punto de entrada de la aplicacion.
+ * Punto de entrada del microservicio chat-notificaciones.
  *
- * <p>El paquete {@code com.arquetipo.demo.sample} contiene un recurso CRUD completo (Product)
- * que sirve de plantilla: copia esas clases, renombralas para tu entidad y ajusta los campos.
+ * <p>Infraestructura transversal (auditoria JPA, carga de .env, excepciones de dominio) en
+ * {@code com.arquetipo.demo.common}; el flujo de notificaciones en
+ * {@code com.arquetipo.demo.notificacion} -- consume eventos de RabbitMQ (
+ * {@code notificacion/amqp/}), los valida contra {@code chat-registro} por gRPC (
+ * {@code com.arquetipo.demo.registro.grpc}, cliente, este servicio no expone gRPC propio) y
+ * los persiste en MySQL con el esquema versionado por Flyway.
  */
 @SpringBootApplication
 @OpenAPIDefinition(info = @Info(
-		title = "Servicio backend (arquetipo)",
+		title = "chat-notificaciones",
 		version = "v1",
-		description = "API de ejemplo generada a partir del arquetipo MVC de Spring Boot"))
+		description = "Notificaciones para los usuarios del sistema (hoy, solicitudes de chat entrantes), consumidas por RabbitMQ"))
 public class DemoApplication {
 
 	public static void main(String[] args) {

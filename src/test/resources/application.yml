@@ -1,0 +1,24 @@
+# Configuracion exclusiva de tests: base H2 en memoria, sin dependencia de MySQL.
+# Flyway se desactiva: las migraciones son SQL de MySQL y el esquema de tests lo genera
+# Hibernate (create-drop) a partir de las entidades. RabbitMQ no hace falta desactivarlo: la
+# conexion es perezosa (ver application.yml), no bloquea la carga del contexto.
+grpc:
+  server:
+    # Sin esto, cada @SpringBootTest intentaria bindear el mismo puerto TCP (competirian entre
+    # si). Los tests del controller gRPC arrancan su propio servidor in-process (grpc-testing).
+    enabled: false
+
+spring:
+  flyway:
+    enabled: false
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=MySQL
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    defer-datasource-initialization: true
+  sql:
+    init:
+      mode: embedded
