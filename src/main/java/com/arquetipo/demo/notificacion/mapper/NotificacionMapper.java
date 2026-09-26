@@ -23,7 +23,8 @@ public class NotificacionMapper {
 				notificacion.getRemitente(),
 				notificacion.getTipo(),
 				notificacion.isLeida(),
-				notificacion.getCreatedAt());
+				notificacion.getCreatedAt(),
+				notificacion.getMeta());
 	}
 
 	public Notificacion toEntity(NotificacionEntrante mensaje) {
@@ -32,6 +33,7 @@ public class NotificacionMapper {
 		notificacion.setReceptor(mensaje.solicitado());
 		notificacion.setTipo(mensaje.tipo());
 		notificacion.setContenido(resolverContenido(mensaje));
+		notificacion.setMeta(mensaje.meta() != null ? mensaje.meta().toString() : null);
 		notificacion.setLeida(false);
 		return notificacion;
 	}

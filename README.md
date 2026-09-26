@@ -30,16 +30,21 @@ Paquete por feature bajo `com.arquetipo.demo`, mismo patrón que `chat-registro/
 - `notificacion/` — la feature:
   - `domain/Notificacion` — entidad JPA: `remitente` (nulo si no aplica), `receptor`
     (obligatorio), `tipo` (obligatorio, sin validar contra una lista cerrada — cualquier string
-    que mande un publicador), `contenido` (el texto a mostrar), `leida` (booleano) +
-    `id`/`version`/auditoría, igual que `Usuario` en `chat-registro`.
+    que mande un publicador), `contenido` (el texto a mostrar), `meta` (JSON, nulo si el
+    mensaje no lo trae — información adicional propia del `tipo`, ver más abajo), `leida`
+    (booleano) + `id`/`version`/auditoría, igual que `Usuario` en `chat-registro`.
   - `amqp/NotificacionListener` — `@RabbitListener` de la cola declarada en `RabbitMqConfig`;
     delega todo en `NotificacionService`.
   - `amqp/dto/NotificacionEntrante` — el mensaje tal como lo publica hoy `chat-conversacion`
-    (`solicitante`/`solicitado`/`tipo`, más `contenido`, contemplado para cuando algún
-    publicador empiece a mandarlo — ver el Javadoc de la clase).
+    (`solicitante`/`solicitado`/`tipo`, más `contenido` y `meta`, contemplados para cuando algún
+    publicador empiece a mandarlos — ver el Javadoc de la clase). `meta` se captura como
+    `JsonNode` en bruto (no una clase por tipo): su forma varía según `tipo` y este servicio
+    solo la persiste tal cual, no la interpreta. `@JsonIgnoreProperties(ignoreUnknown = true)`
+    protege contra cualquier otro campo nuevo que un publicador empiece a mandar.
   - `mapper/NotificacionMapper` — traduce el mensaje (`solicitante`/`solicitado`) a la entidad
-    (`remitente`/`receptor`) y determina el `contenido` a partir del `tipo` cuando el mensaje
-    no lo trae; y la entidad a `NotificacionResponse` (lectura, ver más abajo).
+    (`remitente`/`receptor`), determina el `contenido` a partir del `tipo` cuando el mensaje no
+    lo trae, y convierte `meta` (`JsonNode`) a texto (`JsonNode#toString()`) para la columna
+    JSON; y la entidad a `NotificacionResponse` (lectura, ver más abajo).
   - `service/NotificacionService` — `registrar`: valida el mensaje (`tipo` y `receptor`
     obligatorios, `remitente`/`receptor` deben existir en `chat-registro` vía
     `RegistroGrpcClient`) y persiste. Un mensaje inválido (falta un campo obligatorio, o el
@@ -90,6 +95,9 @@ Los dos únicos protocolos que expone este servicio (puerto `9092`, ver
 - El **tipo**.
 - Si está **leída**.
 - La **fecha de creación** (`created_at`, ISO-8601 UTC).
+- La **metadata adicional** (`meta`) — `optional string`, el JSON tal cual se persistió (ver
+  `domain/Notificacion#meta` más arriba), sin interpretar; ausente (no `""`) cuando la
+  notificación no tiene meta — comprobar con `hasMeta()`, no asumir cadena vacía.
 
 No valida que `receptor` exista en `chat-registro` — mismo criterio que `Historial`/`ListaChats`
 en chat-conversacion (operaciones de lectura, a diferencia de `CrearSolicitud`, que sí valida

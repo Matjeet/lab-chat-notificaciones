@@ -49,6 +49,15 @@ public class Notificacion {
 	@Column(nullable = false, length = 255)
 	private String contenido;
 
+	/**
+	 * Metadata adicional propia del tipo de notificacion, como JSON (p. ej. para "solicitud",
+	 * aceptada/pendiente -- ver MetaSolicitud en chat-conversacion, el publicador). Nula si el
+	 * mensaje de RabbitMQ no trae "meta" (no todos los tipos lo necesitan, y los mensajes
+	 * anteriores a este campo tampoco lo traian).
+	 */
+	@Column(columnDefinition = "json")
+	private String meta;
+
 	@Column(nullable = false)
 	private boolean leida = false;
 

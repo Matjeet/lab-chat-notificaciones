@@ -1,6 +1,7 @@
 package com.arquetipo.demo.notificacion.amqp.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Mensaje tal como llega del exchange {@code chat.notificaciones} (ver
@@ -15,13 +16,21 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
  * {@code tipo}) -- el campo ya esta contemplado aqui para cuando algun publicador empiece a
  * mandarlo.
  *
- * <p>{@code @JsonIgnoreProperties(ignoreUnknown = true)}: chat-conversacion manda ademas un
- * campo {@code meta} (informacion adicional propia del tipo, p. ej. si la solicitud ya fue
- * aceptada) que este servicio todavia no consume -- sin esta anotacion, Jackson rechazaria el
- * mensaje entero por traer un campo que este record no declara (falla por defecto ante
- * propiedades desconocidas), y {@code NotificacionListener} lo reencolaria indefinidamente en
- * vez de simplemente ignorarlo.
+ * <p>{@code meta} lleva informacion adicional propia de {@code tipo} (p. ej. para
+ * "solicitud", {@code MetaSolicitud} en chat-conversacion: {@code aceptada}/{@code pendiente},
+ * hoy siempre {@code { aceptada: false, pendiente: true }}). Se captura como {@link JsonNode}
+ * en bruto, no como una clase por tipo, porque su forma varia segun {@code tipo} y este
+ * servicio solo la persiste tal cual (ver {@code NotificacionMapper#toEntity}) -- no la
+ * interpreta ni la valida, asi que un campo nuevo dentro de {@code meta} (como {@code
+ * pendiente}, sumado despues de {@code aceptada}) no necesita ningun cambio aqui.
+ *
+ * <p>{@code @JsonIgnoreProperties(ignoreUnknown = true)}: protege contra un campo nuevo que
+ * algun publicador empiece a mandar y que este record todavia no declare -- sin esta
+ * anotacion, Jackson rechazaria el mensaje entero (falla por defecto ante propiedades
+ * desconocidas) y {@code NotificacionListener} lo reencolaria indefinidamente en vez de
+ * simplemente ignorarlo.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record NotificacionEntrante(String solicitante, String solicitado, String tipo, String contenido) {
+public record NotificacionEntrante(String solicitante, String solicitado, String tipo, String contenido,
+		JsonNode meta) {
 }

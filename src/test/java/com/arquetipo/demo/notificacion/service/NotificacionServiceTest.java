@@ -18,6 +18,7 @@ import com.arquetipo.demo.notificacion.mapper.NotificacionMapper;
 import com.arquetipo.demo.notificacion.repository.NotificacionRepository;
 import com.arquetipo.demo.notificacion.web.dto.PageResponse;
 import com.arquetipo.demo.registro.grpc.RegistroGrpcClient;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -56,7 +57,7 @@ class NotificacionServiceTest {
 			return notificacion;
 		});
 
-		service.registrar(new NotificacionEntrante("mateo", "ana", "solicitud", null));
+		service.registrar(new NotificacionEntrante("mateo", "ana", "solicitud", null, null));
 
 		verify(repository).save(argThat(notificacion -> {
 			assertThat(notificacion.getRemitente()).isEqualTo("mateo");
@@ -74,7 +75,7 @@ class NotificacionServiceTest {
 		when(registroClient.existeUsername("mateo")).thenReturn(true);
 		when(repository.save(any(Notificacion.class))).thenAnswer(invocacion -> invocacion.getArgument(0));
 
-		service.registrar(new NotificacionEntrante("mateo", "ana", "solicitud", "contenido a medida"));
+		service.registrar(new NotificacionEntrante("mateo", "ana", "solicitud", "contenido a medida", null));
 
 		verify(repository).save(argThat(notificacion -> {
 			assertThat(notificacion.getContenido()).isEqualTo("contenido a medida");
@@ -83,8 +84,37 @@ class NotificacionServiceTest {
 	}
 
 	@Test
+	void registrar_conMeta_persisteElJsonComoTexto() throws Exception {
+		when(registroClient.existeUsername("ana")).thenReturn(true);
+		when(registroClient.existeUsername("mateo")).thenReturn(true);
+		when(repository.save(any(Notificacion.class))).thenAnswer(invocacion -> invocacion.getArgument(0));
+		var meta = new ObjectMapper().readTree("{\"aceptada\":false,\"pendiente\":true}");
+
+		service.registrar(new NotificacionEntrante("mateo", "ana", "solicitud", null, meta));
+
+		verify(repository).save(argThat(notificacion -> {
+			assertThat(notificacion.getMeta()).isEqualTo("{\"aceptada\":false,\"pendiente\":true}");
+			return true;
+		}));
+	}
+
+	@Test
+	void registrar_sinMeta_persisteMetaNulo() {
+		when(registroClient.existeUsername("ana")).thenReturn(true);
+		when(registroClient.existeUsername("mateo")).thenReturn(true);
+		when(repository.save(any(Notificacion.class))).thenAnswer(invocacion -> invocacion.getArgument(0));
+
+		service.registrar(new NotificacionEntrante("mateo", "ana", "solicitud", null, null));
+
+		verify(repository).save(argThat(notificacion -> {
+			assertThat(notificacion.getMeta()).isNull();
+			return true;
+		}));
+	}
+
+	@Test
 	void registrar_sinTipo_seDescartaSinPersistirNiConsultarRegistro() {
-		service.registrar(new NotificacionEntrante("mateo", "ana", null, null));
+		service.registrar(new NotificacionEntrante("mateo", "ana", null, null, null));
 
 		verify(registroClient, never()).existeUsername(any());
 		verify(repository, never()).save(any());
@@ -92,7 +122,7 @@ class NotificacionServiceTest {
 
 	@Test
 	void registrar_sinReceptor_seDescartaSinPersistirNiConsultarRegistro() {
-		service.registrar(new NotificacionEntrante("mateo", null, "solicitud", null));
+		service.registrar(new NotificacionEntrante("mateo", null, "solicitud", null, null));
 
 		verify(registroClient, never()).existeUsername(any());
 		verify(repository, never()).save(any());
@@ -102,7 +132,7 @@ class NotificacionServiceTest {
 	void registrar_conReceptorInexistente_seDescartaSinPersistir() {
 		when(registroClient.existeUsername("fantasma")).thenReturn(false);
 
-		service.registrar(new NotificacionEntrante("mateo", "fantasma", "solicitud", null));
+		service.registrar(new NotificacionEntrante("mateo", "fantasma", "solicitud", null, null));
 
 		verify(repository, never()).save(any());
 	}
@@ -112,7 +142,7 @@ class NotificacionServiceTest {
 		when(registroClient.existeUsername("ana")).thenReturn(true);
 		when(registroClient.existeUsername("fantasma")).thenReturn(false);
 
-		service.registrar(new NotificacionEntrante("fantasma", "ana", "solicitud", null));
+		service.registrar(new NotificacionEntrante("fantasma", "ana", "solicitud", null, null));
 
 		verify(repository, never()).save(any());
 	}
@@ -122,7 +152,7 @@ class NotificacionServiceTest {
 		when(registroClient.existeUsername("ana")).thenReturn(true);
 		when(repository.save(any(Notificacion.class))).thenAnswer(invocacion -> invocacion.getArgument(0));
 
-		service.registrar(new NotificacionEntrante(null, "ana", "solicitud", null));
+		service.registrar(new NotificacionEntrante(null, "ana", "solicitud", null, null));
 
 		verify(repository).save(any());
 	}
@@ -135,15 +165,17 @@ class NotificacionServiceTest {
 		notificacion.setReceptor("ana");
 		notificacion.setTipo("solicitud");
 		notificacion.setContenido("mateo te ha enviado una solicitud de chat");
+		notificacion.setMeta("{\"aceptada\":false,\"pendiente\":true}");
 		notificacion.setLeida(false);
 		notificacion.setCreatedAt(Instant.parse("2026-09-25T20:00:00Z"));
 		Pageable pageable = PageRequest.of(0, 20);
 		when(repository.findByReceptor(eq("ana"), eq(pageable)))
 				.thenReturn(new PageImpl<>(List.of(notificacion), pageable, 1));
 
-		PageResponse<?> pagina = service.listaNotificaciones("ana", pageable);
+		var pagina = service.listaNotificaciones("ana", pageable);
 
 		assertThat(pagina.content()).hasSize(1);
+		assertThat(pagina.content().get(0).meta()).isEqualTo("{\"aceptada\":false,\"pendiente\":true}");
 		assertThat(pagina.totalElements()).isEqualTo(1);
 	}
 

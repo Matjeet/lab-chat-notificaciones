@@ -48,6 +48,10 @@ message NotificacionItem {
   bool leida = 4;
   // Instante de creacion en UTC, ISO-8601 (ej. "2026-09-25T20:53:47.441193Z").
   string created_at = 5;
+  // Informacion adicional propia de "tipo", como texto JSON tal cual se persisto (ver
+  // Notificacion#meta) -- este servicio no la interpreta, solo la propaga. Ausente (no "")
+  // cuando la notificacion no tiene meta -- usar has_meta(), no asumir "" como "sin meta".
+  optional string meta = 6;
 }
 
 message ActualizarLeidaRequest {

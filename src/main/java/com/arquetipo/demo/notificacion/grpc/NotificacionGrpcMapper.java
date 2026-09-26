@@ -51,6 +51,9 @@ public class NotificacionGrpcMapper {
 		if (response.remitente() != null) {
 			builder.setRemitente(response.remitente());
 		}
+		if (response.meta() != null) {
+			builder.setMeta(response.meta());
+		}
 		return builder.build();
 	}
 
