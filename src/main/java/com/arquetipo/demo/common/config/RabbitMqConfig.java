@@ -12,18 +12,27 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Exchange, cola y binding de RabbitMQ por donde chat-notificaciones recibe los eventos que
- * publica chat-conversacion (ver {@code com.arquetipo.demo.notificacion.amqp.NotificacionListener}).
- * Los tres se declaran DURABLES (sobreviven un reinicio del broker): si este servicio esta
- * caido cuando se publica un mensaje, lo encuentra en la cola al volver a levantarse -- no se
- * pierde. Mismo exchange (topic, nombre y forma identicos) que declara chat-conversacion en su
- * propio {@code RabbitMqConfig}; RabbitMQ no lo vuelve a crear si ya existe con las mismas
- * propiedades (declaracion idempotente vía {@code RabbitAdmin}, autoconfigurado por
- * {@code spring-boot-starter-amqp}).
+ * Exchange y colas/bindings de RabbitMQ por donde chat-notificaciones recibe los eventos que
+ * publica chat-conversacion. Todo se declara DURABLE (sobrevive un reinicio del broker): si
+ * este servicio esta caido cuando se publica un mensaje, lo encuentra en la cola al volver a
+ * levantarse -- no se pierde. Mismo exchange (topic, nombre y forma identicos) que declara
+ * chat-conversacion en su propio {@code RabbitMqConfig}; RabbitMQ no lo vuelve a crear si ya
+ * existe con las mismas propiedades (declaracion idempotente vía {@code RabbitAdmin},
+ * autoconfigurado por {@code spring-boot-starter-amqp}).
  *
- * <p>El binding usa un routing key comodin ({@code notificacion.#}, no solo
- * {@code notificacion.solicitud}) para no tener que tocar la cola cuando chat-conversacion (u
- * otro publicador futuro) sume un tipo de notificacion nuevo al mismo exchange.
+ * <p>Dos colas sobre el mismo exchange, cada una con su propio proposito, distinguidas por
+ * routing key (topic exchange: un mensaje se entrega a cada binding cuyo patron haga match, no
+ * solo al primero):
+ * <ul>
+ *   <li>{@code notificacionesQueue} ({@code notificacion.#}, ver
+ *       {@code notificacion.amqp.NotificacionListener}) -- registra notificaciones nuevas.
+ *   <li>{@code notificacionesActualizacionesQueue} ({@code actualizacion.#}, ver
+ *       {@code notificacion.amqp.NotificacionActualizacionListener}) -- actualiza una
+ *       notificacion ya existente. Un prefijo de routing key distinto de {@code notificacion.}
+ *       a proposito: si usara {@code notificacion.algo}, tambien haria match con el comodin
+ *       {@code notificacion.#} de la cola de arriba y el mensaje llegaria (y se procesaria) por
+ *       las dos colas a la vez.
+ * </ul>
  *
  * <p>No se declara aqui un {@code RabbitTemplate}: este servicio solo consume, nunca publica.
  * El {@link MessageConverter} de abajo si hace falta -- Spring Boot lo usa automaticamente
@@ -42,6 +51,12 @@ public class RabbitMqConfig {
 	@Value("${app.amqp.notificaciones-routing-key:notificacion.#}")
 	private String routingKey;
 
+	@Value("${app.amqp.actualizaciones-queue:chat-notificaciones.actualizaciones}")
+	private String nombreQueueActualizaciones;
+
+	@Value("${app.amqp.actualizaciones-routing-key:actualizacion.#}")
+	private String routingKeyActualizaciones;
+
 	@Bean
 	public TopicExchange notificacionesExchange() {
 		return new TopicExchange(nombreExchange, true, false);
@@ -55,6 +70,19 @@ public class RabbitMqConfig {
 	@Bean
 	public Binding notificacionesBinding(Queue notificacionesQueue, TopicExchange notificacionesExchange) {
 		return BindingBuilder.bind(notificacionesQueue).to(notificacionesExchange).with(routingKey);
+	}
+
+	@Bean
+	public Queue notificacionesActualizacionesQueue() {
+		return QueueBuilder.durable(nombreQueueActualizaciones).build();
+	}
+
+	@Bean
+	public Binding notificacionesActualizacionesBinding(
+			Queue notificacionesActualizacionesQueue, TopicExchange notificacionesExchange) {
+		return BindingBuilder.bind(notificacionesActualizacionesQueue)
+				.to(notificacionesExchange)
+				.with(routingKeyActualizaciones);
 	}
 
 	@Bean

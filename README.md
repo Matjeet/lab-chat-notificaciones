@@ -21,7 +21,7 @@ Paquete por feature bajo `com.arquetipo.demo`, mismo patrón que `chat-registro/
 `chat-conversacion/`:
 
 - `common/` — infraestructura transversal: `config/JpaAuditingConfig` (poblado automático de
-  `created_at`/`updated_at`), `config/RabbitMqConfig` (exchange, cola y binding, ver más
+  `created_at`/`updated_at`), `config/RabbitMqConfig` (exchange y dos colas/bindings, ver más
   abajo), `env/DotenvEnvironmentPostProcessor` (carga `.env`, mismo código que
   `chat-registro`), `exception/{ServiceUnavailableException,ResourceNotFoundException}` (gRPC
   `UNAVAILABLE` al hablar con `chat-registro`; `NOT_FOUND` cuando `ActualizarLeida` recibe un
@@ -33,14 +33,20 @@ Paquete por feature bajo `com.arquetipo.demo`, mismo patrón que `chat-registro/
     que mande un publicador), `contenido` (el texto a mostrar), `meta` (JSON, nulo si el
     mensaje no lo trae — información adicional propia del `tipo`, ver más abajo), `leida`
     (booleano) + `id`/`version`/auditoría, igual que `Usuario` en `chat-registro`.
-  - `amqp/NotificacionListener` — `@RabbitListener` de la cola declarada en `RabbitMqConfig`;
-    delega todo en `NotificacionService`.
+  - `amqp/NotificacionListener` — `@RabbitListener` de la cola de **registro** declarada en
+    `RabbitMqConfig`; delega todo en `NotificacionService#registrar`.
+  - `amqp/NotificacionActualizacionListener` — `@RabbitListener` de la cola de
+    **actualización** (distinta de la de arriba, ver más abajo); delega todo en
+    `NotificacionService#actualizar`.
   - `amqp/dto/NotificacionEntrante` — el mensaje tal como lo publica hoy `chat-conversacion`
     (`solicitante`/`solicitado`/`tipo`, más `contenido` y `meta`, contemplados para cuando algún
     publicador empiece a mandarlos — ver el Javadoc de la clase). `meta` se captura como
     `JsonNode` en bruto (no una clase por tipo): su forma varía según `tipo` y este servicio
     solo la persiste tal cual, no la interpreta. `@JsonIgnoreProperties(ignoreUnknown = true)`
     protege contra cualquier otro campo nuevo que un publicador empiece a mandar.
+  - `amqp/dto/NotificacionActualizacionEntrante` — mismo vocabulario y mismo tratamiento de
+    `meta` que `NotificacionEntrante`, pero para la cola de actualización: no crea nada, ver
+    más abajo.
   - `mapper/NotificacionMapper` — traduce el mensaje (`solicitante`/`solicitado`) a la entidad
     (`remitente`/`receptor`), determina el `contenido` a partir del `tipo` cuando el mensaje no
     lo trae, y convierte `meta` (`JsonNode`) a texto (`JsonNode#toString()`) para la columna
@@ -53,7 +59,10 @@ Paquete por feature bajo `com.arquetipo.demo`, mismo patrón que `chat-registro/
     mensaje. `listaNotificaciones`: pagina las notificaciones de un receptor (no valida que
     exista en chat-registro, igual que el historial/lista de chats de chat-conversacion).
     `actualizarLeida`: cambia el booleano `leida` de una notificacion existente por su `id`
-    (`ResourceNotFoundException` si no existe).
+    (`ResourceNotFoundException` si no existe). `actualizar`: cambia `contenido`/`meta` de la
+    notificación más reciente cuyo `remitente`/`receptor`/`tipo` coincidan con el mensaje de la
+    cola de actualización — no crea nada; si no encuentra ninguna, se descarta igual que un
+    mensaje de `registrar` inválido.
   - `web/dto/NotificacionResponse` + `web/dto/PageResponse` — DTO de lectura y envoltorio de
     paginación (mismo patrón que en chat-conversacion), usados por `NotificacionGrpcController`.
   - `grpc/NotificacionGrpcController` + `grpc/NotificacionGrpcMapper` — `ListaNotificaciones`
@@ -65,21 +74,31 @@ Paquete por feature bajo `com.arquetipo.demo`, mismo patrón que `chat-registro/
   mínima de su `.proto`, solo `ExisteUsername`), mismo patrón que el cliente equivalente en
   `chat-conversacion`/`chat-gateway`.
 
-### RabbitMQ: exchange, cola y binding
+### RabbitMQ: exchange, dos colas y dos bindings
 
 `chat-conversacion` declara y publica en el exchange `chat.notificaciones` (topic, durable).
-Este servicio no lo posee, pero sí declara y posee:
+Este servicio no lo posee, pero sí declara y posee **dos colas**, cada una con su propio
+propósito, sobre ese mismo exchange:
 
-- Una **cola durable** propia (`chat-notificaciones` por defecto) — sobrevive un reinicio del
-  broker.
-- Un **binding durable** de esa cola al exchange, con el routing key comodín
-  `notificacion.#` — cubre `notificacion.solicitud` (el único tipo hoy) y cualquier tipo nuevo
-  que se sume al mismo exchange sin tener que tocar el binding.
+- **`chat-notificaciones`** (por defecto) — **registra notificaciones nuevas**
+  (`notificacion.amqp.NotificacionListener` → `NotificacionService#registrar`). Binding con
+  routing key comodín `notificacion.#` — cubre `notificacion.solicitud` (el único tipo hoy) y
+  cualquier tipo nuevo que se sume al mismo exchange sin tener que tocar el binding.
+- **`chat-notificaciones.actualizaciones`** (por defecto) — **actualiza una notificación ya
+  existente** (`notificacion.amqp.NotificacionActualizacionListener` →
+  `NotificacionService#actualizar`); nunca crea una fila nueva. Identifica la notificación a
+  actualizar por `remitente`/`receptor`/`tipo` (la más reciente que coincida — no por `id`,
+  que ningún publicador externo conoce hoy) y solo puede cambiar `contenido`/`meta`; un campo
+  ausente en el mensaje deja ese valor sin tocar. Binding con routing key comodín
+  `actualizacion.#` — **a propósito con un prefijo distinto** de `notificacion.` (el de la cola
+  de arriba): un topic exchange entrega un mensaje a **todos** los bindings cuyo patrón haga
+  match, así que si esta routing key empezara igual, el mensaje también llegaría (y se
+  procesaría) por la cola de registrar.
 
-Ambos se declaran en `com.arquetipo.demo.common.config.RabbitMqConfig` (vía `RabbitAdmin`,
-autoconfigurado por `spring-boot-starter-amqp`): si el broker se reinicia, o si este servicio
-arranca antes que `chat-conversacion` haya declarado el exchange, la declaración es idempotente
-y no se pierde nada que ya esté en la cola.
+Ambas colas y bindings se declaran en `com.arquetipo.demo.common.config.RabbitMqConfig` (vía
+`RabbitAdmin`, autoconfigurado por `spring-boot-starter-amqp`): si el broker se reinicia, o si
+este servicio arranca antes que `chat-conversacion` haya declarado el exchange, la declaración
+es idempotente y no se pierde nada que ya esté en las colas.
 
 ### gRPC: `ListaNotificaciones` y `ActualizarLeida`
 
