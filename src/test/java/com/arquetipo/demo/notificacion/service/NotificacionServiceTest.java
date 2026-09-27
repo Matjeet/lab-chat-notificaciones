@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.eq;
 
 import com.arquetipo.demo.common.exception.ResourceNotFoundException;
+import com.arquetipo.demo.notificacion.amqp.dto.NotificacionActualizacionEntrante;
 import com.arquetipo.demo.notificacion.amqp.dto.NotificacionEntrante;
 import com.arquetipo.demo.notificacion.domain.Notificacion;
 import com.arquetipo.demo.notificacion.mapper.NotificacionMapper;
@@ -221,6 +222,98 @@ class NotificacionServiceTest {
 		assertThatThrownBy(() -> service.actualizarLeida(99L, true))
 				.isInstanceOf(ResourceNotFoundException.class);
 
+		verify(repository, never()).save(any());
+	}
+
+	@Test
+	void actualizar_conRemitenteCoincidente_actualizaContenidoYMeta() throws Exception {
+		Notificacion existente = new Notificacion();
+		existente.setId(1L);
+		existente.setRemitente("mateo");
+		existente.setReceptor("ana");
+		existente.setTipo("solicitud");
+		existente.setContenido("mateo te ha enviado una solicitud de chat");
+		existente.setMeta("{\"aceptada\":false,\"pendiente\":true}");
+		when(repository.findFirstByRemitenteAndReceptorAndTipoOrderByCreatedAtDesc("mateo", "ana", "solicitud"))
+				.thenReturn(Optional.of(existente));
+		when(repository.save(any(Notificacion.class))).thenAnswer(invocacion -> invocacion.getArgument(0));
+		var meta = new ObjectMapper().readTree("{\"aceptada\":true,\"pendiente\":false}");
+
+		service.actualizar(new NotificacionActualizacionEntrante(
+				"mateo", "ana", "solicitud", "mateo aceptó tu solicitud de chat", meta));
+
+		verify(repository).save(argThat(guardada -> {
+			assertThat(guardada.getContenido()).isEqualTo("mateo aceptó tu solicitud de chat");
+			assertThat(guardada.getMeta()).isEqualTo("{\"aceptada\":true,\"pendiente\":false}");
+			return true;
+		}));
+	}
+
+	@Test
+	void actualizar_sinRemitenteEnMensaje_buscaConRemitenteNulo() {
+		Notificacion existente = new Notificacion();
+		existente.setId(2L);
+		existente.setReceptor("ana");
+		existente.setTipo("sistema");
+		existente.setContenido("aviso del sistema");
+		when(repository.findFirstByRemitenteIsNullAndReceptorAndTipoOrderByCreatedAtDesc("ana", "sistema"))
+				.thenReturn(Optional.of(existente));
+		when(repository.save(any(Notificacion.class))).thenAnswer(invocacion -> invocacion.getArgument(0));
+
+		service.actualizar(new NotificacionActualizacionEntrante(null, "ana", "sistema", "aviso actualizado", null));
+
+		verify(repository).save(argThat(guardada -> {
+			assertThat(guardada.getContenido()).isEqualTo("aviso actualizado");
+			return true;
+		}));
+		verify(repository, never()).findFirstByRemitenteAndReceptorAndTipoOrderByCreatedAtDesc(any(), any(), any());
+	}
+
+	@Test
+	void actualizar_soloConMeta_dejaContenidoSinTocar() throws Exception {
+		Notificacion existente = new Notificacion();
+		existente.setId(1L);
+		existente.setRemitente("mateo");
+		existente.setReceptor("ana");
+		existente.setTipo("solicitud");
+		existente.setContenido("mateo te ha enviado una solicitud de chat");
+		when(repository.findFirstByRemitenteAndReceptorAndTipoOrderByCreatedAtDesc("mateo", "ana", "solicitud"))
+				.thenReturn(Optional.of(existente));
+		when(repository.save(any(Notificacion.class))).thenAnswer(invocacion -> invocacion.getArgument(0));
+		var meta = new ObjectMapper().readTree("{\"aceptada\":true,\"pendiente\":false}");
+
+		service.actualizar(new NotificacionActualizacionEntrante("mateo", "ana", "solicitud", null, meta));
+
+		verify(repository).save(argThat(guardada -> {
+			assertThat(guardada.getContenido()).isEqualTo("mateo te ha enviado una solicitud de chat");
+			assertThat(guardada.getMeta()).isEqualTo("{\"aceptada\":true,\"pendiente\":false}");
+			return true;
+		}));
+	}
+
+	@Test
+	void actualizar_sinCoincidencia_seDescartaSinPersistir() {
+		when(repository.findFirstByRemitenteAndReceptorAndTipoOrderByCreatedAtDesc("mateo", "ana", "solicitud"))
+				.thenReturn(Optional.empty());
+
+		service.actualizar(new NotificacionActualizacionEntrante("mateo", "ana", "solicitud", "algo", null));
+
+		verify(repository, never()).save(any());
+	}
+
+	@Test
+	void actualizar_sinTipo_seDescartaSinConsultarRepositorio() {
+		service.actualizar(new NotificacionActualizacionEntrante("mateo", "ana", null, "algo", null));
+
+		verify(repository, never()).findFirstByRemitenteAndReceptorAndTipoOrderByCreatedAtDesc(any(), any(), any());
+		verify(repository, never()).save(any());
+	}
+
+	@Test
+	void actualizar_sinReceptor_seDescartaSinConsultarRepositorio() {
+		service.actualizar(new NotificacionActualizacionEntrante("mateo", null, "solicitud", "algo", null));
+
+		verify(repository, never()).findFirstByRemitenteAndReceptorAndTipoOrderByCreatedAtDesc(any(), any(), any());
 		verify(repository, never()).save(any());
 	}
 }

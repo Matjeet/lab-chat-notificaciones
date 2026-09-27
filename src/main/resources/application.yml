@@ -71,6 +71,13 @@ app:
     # Comodin: cubre "notificacion.solicitud" (el unico tipo hoy) y cualquier tipo futuro sin
     # tener que tocar el binding.
     notificaciones-routing-key: ${RABBITMQ_NOTIFICACIONES_ROUTING_KEY:notificacion.#}
+    # Segunda cola/binding sobre el MISMO exchange (ver RabbitMqConfig): esta es solo para
+    # actualizar una notificacion ya existente (contenido/meta), nunca para crear una nueva.
+    # Routing key con un prefijo distinto ("actualizacion.", no "notificacion.") a proposito:
+    # si empezara igual, tambien haria match con el comodin de arriba y el mensaje llegaria
+    # (y se procesaria) por las dos colas a la vez.
+    actualizaciones-queue: ${RABBITMQ_ACTUALIZACIONES_QUEUE:chat-notificaciones.actualizaciones}
+    actualizaciones-routing-key: ${RABBITMQ_ACTUALIZACIONES_ROUTING_KEY:actualizacion.#}
 
 server:
   port: 8083
