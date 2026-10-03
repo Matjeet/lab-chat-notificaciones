@@ -24,6 +24,13 @@ import com.fasterxml.jackson.databind.JsonNode;
  * interpreta ni la valida, asi que un campo nuevo dentro de {@code meta} (como {@code
  * pendiente}, sumado despues de {@code aceptada}) no necesita ningun cambio aqui.
  *
+ * <p>{@code avatar} es el avatar de {@code solicitante} (el remitente de la notificacion), y
+ * <b>solo</b> el suyo: chat-conversacion nunca manda el de {@code solicitado}. Un enlace http(s)
+ * o una etiqueta {@code <Blobatar .../>}, tal como lo guardo chat-registro. Ausente (nulo) si el
+ * solicitante no eligio avatar o no tiene perfil guardado todavia; solo viaja en una solicitud
+ * nueva, no en la de actualizacion ({@link NotificacionActualizacionEntrante} no lo declara).
+ * Nunca se escribe en un log.
+ *
  * <p>{@code @JsonIgnoreProperties(ignoreUnknown = true)}: protege contra un campo nuevo que
  * algun publicador empiece a mandar y que este record todavia no declare -- sin esta
  * anotacion, Jackson rechazaria el mensaje entero (falla por defecto ante propiedades
@@ -32,5 +39,5 @@ import com.fasterxml.jackson.databind.JsonNode;
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record NotificacionEntrante(String solicitante, String solicitado, String tipo, String contenido,
-		JsonNode meta) {
+		JsonNode meta, String avatar) {
 }

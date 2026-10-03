@@ -24,12 +24,15 @@ public class NotificacionMapper {
 				notificacion.getTipo(),
 				notificacion.isLeida(),
 				notificacion.getCreatedAt(),
-				notificacion.getMeta());
+				notificacion.getMeta(),
+				notificacion.getAvatarRemitente());
 	}
 
 	public Notificacion toEntity(NotificacionEntrante mensaje) {
 		Notificacion notificacion = new Notificacion();
 		notificacion.setRemitente(mensaje.solicitante());
+		notificacion.setAvatarRemitente(
+				mensaje.avatar() == null || mensaje.avatar().isBlank() ? null : mensaje.avatar());
 		notificacion.setReceptor(mensaje.solicitado());
 		notificacion.setTipo(mensaje.tipo());
 		notificacion.setContenido(resolverContenido(mensaje));

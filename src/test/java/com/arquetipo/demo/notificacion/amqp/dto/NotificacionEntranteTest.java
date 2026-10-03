@@ -41,6 +41,38 @@ class NotificacionEntranteTest {
 	}
 
 	@Test
+	void deserializa_conAvatar_loCapturaAlNivelRaiz() throws Exception {
+		String json = """
+				{
+				  "solicitante": "mateo",
+				  "solicitado": "ana",
+				  "tipo": "solicitud",
+				  "meta": { "aceptada": false, "pendiente": true },
+				  "avatar": "<Blobatar name=\\"mateo\\" />"
+				}
+				""";
+
+		NotificacionEntrante mensaje = objectMapper.readValue(json, NotificacionEntrante.class);
+
+		assertThat(mensaje.avatar()).isEqualTo("<Blobatar name=\"mateo\" />");
+	}
+
+	@Test
+	void deserializa_sinAvatar_loDejaNulo() throws Exception {
+		String json = """
+				{
+				  "solicitante": "mateo",
+				  "solicitado": "ana",
+				  "tipo": "solicitud"
+				}
+				""";
+
+		NotificacionEntrante mensaje = objectMapper.readValue(json, NotificacionEntrante.class);
+
+		assertThat(mensaje.avatar()).isNull();
+	}
+
+	@Test
 	void deserializa_sinMeta_loDejaNulo() throws Exception {
 		String json = """
 				{

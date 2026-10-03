@@ -28,19 +28,22 @@ Paquete por feature bajo `com.arquetipo.demo`, mismo patrón que `chat-registro/
   `id` que no existe) y `grpc/` (arranca/detiene el servidor gRPC embebido, mismo patrón que
   `chat-registro`/`chat-conversacion`, genérico — no sabe nada de notificaciones).
 - `notificacion/` — la feature:
-  - `domain/Notificacion` — entidad JPA: `remitente` (nulo si no aplica), `receptor`
-    (obligatorio), `tipo` (obligatorio, sin validar contra una lista cerrada — cualquier string
-    que mande un publicador), `contenido` (el texto a mostrar), `meta` (JSON, nulo si el
-    mensaje no lo trae — información adicional propia del `tipo`, ver más abajo), `leida`
-    (booleano) + `id`/`version`/auditoría, igual que `Usuario` en `chat-registro`.
+  - `domain/Notificacion` — entidad JPA: `remitente` (nulo si no aplica), `avatarRemitente`
+    (avatar de `remitente`, columna `avatar_remitente` `VARCHAR(500)`, nulo si no hay remitente,
+    si no eligió avatar, o si el mensaje no lo trae — ver "Avatar del remitente" más abajo),
+    `receptor` (obligatorio), `tipo` (obligatorio, sin validar contra una lista cerrada —
+    cualquier string que mande un publicador), `contenido` (el texto a mostrar), `meta` (JSON,
+    nulo si el mensaje no lo trae — información adicional propia del `tipo`, ver más abajo),
+    `leida` (booleano) + `id`/`version`/auditoría, igual que `Usuario` en `chat-registro`.
   - `amqp/NotificacionListener` — `@RabbitListener` de la cola de **registro** declarada en
     `RabbitMqConfig`; delega todo en `NotificacionService#registrar`.
   - `amqp/NotificacionActualizacionListener` — `@RabbitListener` de la cola de
     **actualización** (distinta de la de arriba, ver más abajo); delega todo en
     `NotificacionService#actualizar`.
   - `amqp/dto/NotificacionEntrante` — el mensaje tal como lo publica hoy `chat-conversacion`
-    (`solicitante`/`solicitado`/`tipo`, más `contenido` y `meta`, contemplados para cuando algún
-    publicador empiece a mandarlos — ver el Javadoc de la clase). `meta` se captura como
+    (`solicitante`/`solicitado`/`tipo`, más `meta` y `avatar` —el del `solicitante`, solo en una
+    solicitud nueva—, y `contenido`, contemplado para cuando algún publicador empiece a
+    mandarlo — ver el Javadoc de la clase). `meta` se captura como
     `JsonNode` en bruto (no una clase por tipo): su forma varía según `tipo` y este servicio
     solo la persiste tal cual, no la interpreta. `@JsonIgnoreProperties(ignoreUnknown = true)`
     protege contra cualquier otro campo nuevo que un publicador empiece a mandar.
@@ -117,6 +120,20 @@ Los dos únicos protocolos que expone este servicio (puerto `9092`, ver
 - La **metadata adicional** (`meta`) — `optional string`, el JSON tal cual se persistió (ver
   `domain/Notificacion#meta` más arriba), sin interpretar; ausente (no `""`) cuando la
   notificación no tiene meta — comprobar con `hasMeta()`, no asumir cadena vacía.
+- El **avatar del remitente** (`avatar_remitente`) — `optional string`: un enlace http(s) o una
+  etiqueta `<Blobatar .../>`, tal como lo guarda `chat-registro` y el cliente lo renderiza tal
+  cual; ausente (no `""`) cuando no hay remitente, no eligió avatar o la notificación no es una
+  solicitud nueva — comprobar con `hasAvatarRemitente()`.
+
+**Avatar del remitente**: `chat-conversacion` manda `avatar` (raíz del JSON) solo en el mensaje
+de una solicitud **nueva** (`notificacion.solicitud`), y solo el del `solicitante` — nunca el del
+`solicitado`; se omite si no tiene avatar o aún no tiene perfil guardado. Lo recibe
+`NotificacionEntrante#avatar` y se persiste en `avatar_remitente` (migración `V3`). No viaja en
+la cola de actualización (`actualizacion.solicitud`): `actualizar` no lo toca, así que una
+notificación conserva el avatar con el que se creó. Guardia defensiva: un avatar de más de 500
+caracteres (no debería pasar, `chat-registro` ya lo limita) se descarta con un `WARN` en vez de
+reventar el insert — sin ella, la excepción no atrapada haría que RabbitMQ reencolara el mensaje
+para siempre. Nunca se escribe el avatar en un log.
 
 No valida que `receptor` exista en `chat-registro` — mismo criterio que `Historial`/`ListaChats`
 en chat-conversacion (operaciones de lectura, a diferencia de `CrearSolicitud`, que sí valida

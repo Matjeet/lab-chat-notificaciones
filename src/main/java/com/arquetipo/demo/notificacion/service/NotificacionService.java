@@ -77,6 +77,17 @@ public class NotificacionService {
 		}
 
 		Notificacion notificacion = mapper.toEntity(mensaje);
+		if (notificacion.getAvatarRemitente() != null
+				&& notificacion.getAvatarRemitente().length() > Notificacion.LONGITUD_MAXIMA_AVATAR) {
+			// chat-registro ya limita el avatar a este tamano, asi que esto no deberia pasar. Sin
+			// este guardia, un avatar mas largo reventaria el insert (columna VARCHAR(500)) y,
+			// como el listener no atrapa la excepcion, RabbitMQ reencolaria el mensaje para
+			// siempre. Se descarta solo el avatar (nunca el recorte: una etiqueta cortada es
+			// invalida), no la notificacion entera. Sin el valor en el log, a proposito.
+			log.warn("Avatar del remitente descartado: supera {} caracteres. tipo='{}' receptor='{}'",
+					Notificacion.LONGITUD_MAXIMA_AVATAR, mensaje.tipo(), mensaje.solicitado());
+			notificacion.setAvatarRemitente(null);
+		}
 		Notificacion guardada = repository.save(notificacion);
 		log.debug("<< registrar() -> OK, id={}", guardada.getId());
 	}
