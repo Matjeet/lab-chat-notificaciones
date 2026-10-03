@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -58,7 +59,7 @@ class NotificacionServiceTest {
 			return notificacion;
 		});
 
-		service.registrar(new NotificacionEntrante("mateo", "ana", "solicitud", null, null));
+		service.registrar(new NotificacionEntrante("mateo", "ana", "solicitud", null, null, null));
 
 		verify(repository).save(argThat(notificacion -> {
 			assertThat(notificacion.getRemitente()).isEqualTo("mateo");
@@ -76,7 +77,7 @@ class NotificacionServiceTest {
 		when(registroClient.existeUsername("mateo")).thenReturn(true);
 		when(repository.save(any(Notificacion.class))).thenAnswer(invocacion -> invocacion.getArgument(0));
 
-		service.registrar(new NotificacionEntrante("mateo", "ana", "solicitud", "contenido a medida", null));
+		service.registrar(new NotificacionEntrante("mateo", "ana", "solicitud", "contenido a medida", null, null));
 
 		verify(repository).save(argThat(notificacion -> {
 			assertThat(notificacion.getContenido()).isEqualTo("contenido a medida");
@@ -91,7 +92,7 @@ class NotificacionServiceTest {
 		when(repository.save(any(Notificacion.class))).thenAnswer(invocacion -> invocacion.getArgument(0));
 		var meta = new ObjectMapper().readTree("{\"aceptada\":false,\"pendiente\":true}");
 
-		service.registrar(new NotificacionEntrante("mateo", "ana", "solicitud", null, meta));
+		service.registrar(new NotificacionEntrante("mateo", "ana", "solicitud", null, meta, null));
 
 		verify(repository).save(argThat(notificacion -> {
 			assertThat(notificacion.getMeta()).isEqualTo("{\"aceptada\":false,\"pendiente\":true}");
@@ -105,7 +106,7 @@ class NotificacionServiceTest {
 		when(registroClient.existeUsername("mateo")).thenReturn(true);
 		when(repository.save(any(Notificacion.class))).thenAnswer(invocacion -> invocacion.getArgument(0));
 
-		service.registrar(new NotificacionEntrante("mateo", "ana", "solicitud", null, null));
+		service.registrar(new NotificacionEntrante("mateo", "ana", "solicitud", null, null, null));
 
 		verify(repository).save(argThat(notificacion -> {
 			assertThat(notificacion.getMeta()).isNull();
@@ -114,8 +115,55 @@ class NotificacionServiceTest {
 	}
 
 	@Test
+	void registrar_conAvatar_loPersisteComoAvatarDelRemitente() {
+		when(registroClient.existeUsername("ana")).thenReturn(true);
+		when(registroClient.existeUsername("mateo")).thenReturn(true);
+		when(repository.save(any(Notificacion.class))).thenAnswer(invocacion -> invocacion.getArgument(0));
+
+		service.registrar(new NotificacionEntrante(
+				"mateo", "ana", "solicitud", null, null, "<Blobatar name=\"mateo\" />"));
+
+		verify(repository).save(argThat(notificacion -> {
+			assertThat(notificacion.getAvatarRemitente()).isEqualTo("<Blobatar name=\"mateo\" />");
+			return true;
+		}));
+	}
+
+	@Test
+	void registrar_sinAvatarOConAvatarVacio_persisteAvatarNulo() {
+		when(registroClient.existeUsername("ana")).thenReturn(true);
+		when(registroClient.existeUsername("mateo")).thenReturn(true);
+		when(repository.save(any(Notificacion.class))).thenAnswer(invocacion -> invocacion.getArgument(0));
+
+		service.registrar(new NotificacionEntrante("mateo", "ana", "solicitud", null, null, null));
+		service.registrar(new NotificacionEntrante("mateo", "ana", "solicitud", null, null, "   "));
+
+		verify(repository, times(2)).save(argThat(notificacion -> {
+			assertThat(notificacion.getAvatarRemitente()).isNull();
+			return true;
+		}));
+	}
+
+	@Test
+	void registrar_conAvatarMasLargoQueLaColumna_guardaLaNotificacionSinAvatar() {
+		when(registroClient.existeUsername("ana")).thenReturn(true);
+		when(registroClient.existeUsername("mateo")).thenReturn(true);
+		when(repository.save(any(Notificacion.class))).thenAnswer(invocacion -> invocacion.getArgument(0));
+		String demasiadoLargo = "https://cdn.example/" + "a".repeat(Notificacion.LONGITUD_MAXIMA_AVATAR);
+
+		service.registrar(new NotificacionEntrante("mateo", "ana", "solicitud", null, null, demasiadoLargo));
+
+		verify(repository).save(argThat(notificacion -> {
+			assertThat(notificacion.getAvatarRemitente()).isNull();
+			assertThat(notificacion.getRemitente()).isEqualTo("mateo");
+			assertThat(notificacion.getContenido()).isEqualTo("mateo te ha enviado una solicitud de chat");
+			return true;
+		}));
+	}
+
+	@Test
 	void registrar_sinTipo_seDescartaSinPersistirNiConsultarRegistro() {
-		service.registrar(new NotificacionEntrante("mateo", "ana", null, null, null));
+		service.registrar(new NotificacionEntrante("mateo", "ana", null, null, null, null));
 
 		verify(registroClient, never()).existeUsername(any());
 		verify(repository, never()).save(any());
@@ -123,7 +171,7 @@ class NotificacionServiceTest {
 
 	@Test
 	void registrar_sinReceptor_seDescartaSinPersistirNiConsultarRegistro() {
-		service.registrar(new NotificacionEntrante("mateo", null, "solicitud", null, null));
+		service.registrar(new NotificacionEntrante("mateo", null, "solicitud", null, null, null));
 
 		verify(registroClient, never()).existeUsername(any());
 		verify(repository, never()).save(any());
@@ -133,7 +181,7 @@ class NotificacionServiceTest {
 	void registrar_conReceptorInexistente_seDescartaSinPersistir() {
 		when(registroClient.existeUsername("fantasma")).thenReturn(false);
 
-		service.registrar(new NotificacionEntrante("mateo", "fantasma", "solicitud", null, null));
+		service.registrar(new NotificacionEntrante("mateo", "fantasma", "solicitud", null, null, null));
 
 		verify(repository, never()).save(any());
 	}
@@ -143,7 +191,7 @@ class NotificacionServiceTest {
 		when(registroClient.existeUsername("ana")).thenReturn(true);
 		when(registroClient.existeUsername("fantasma")).thenReturn(false);
 
-		service.registrar(new NotificacionEntrante("fantasma", "ana", "solicitud", null, null));
+		service.registrar(new NotificacionEntrante("fantasma", "ana", "solicitud", null, null, null));
 
 		verify(repository, never()).save(any());
 	}
@@ -153,7 +201,7 @@ class NotificacionServiceTest {
 		when(registroClient.existeUsername("ana")).thenReturn(true);
 		when(repository.save(any(Notificacion.class))).thenAnswer(invocacion -> invocacion.getArgument(0));
 
-		service.registrar(new NotificacionEntrante(null, "ana", "solicitud", null, null));
+		service.registrar(new NotificacionEntrante(null, "ana", "solicitud", null, null, null));
 
 		verify(repository).save(any());
 	}
@@ -167,6 +215,7 @@ class NotificacionServiceTest {
 		notificacion.setTipo("solicitud");
 		notificacion.setContenido("mateo te ha enviado una solicitud de chat");
 		notificacion.setMeta("{\"aceptada\":false,\"pendiente\":true}");
+		notificacion.setAvatarRemitente("https://cdn.example/mateo.png");
 		notificacion.setLeida(false);
 		notificacion.setCreatedAt(Instant.parse("2026-09-25T20:00:00Z"));
 		Pageable pageable = PageRequest.of(0, 20);
@@ -177,6 +226,7 @@ class NotificacionServiceTest {
 
 		assertThat(pagina.content()).hasSize(1);
 		assertThat(pagina.content().get(0).meta()).isEqualTo("{\"aceptada\":false,\"pendiente\":true}");
+		assertThat(pagina.content().get(0).avatarRemitente()).isEqualTo("https://cdn.example/mateo.png");
 		assertThat(pagina.totalElements()).isEqualTo(1);
 	}
 

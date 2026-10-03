@@ -59,7 +59,8 @@ class NotificacionGrpcControllerTest {
 	@Test
 	void listaNotificaciones_delegaEnElServicioYMapeaLaPagina() {
 		NotificacionResponse notificacion = new NotificacionResponse(
-				1L, "mateo", "solicitud", false, Instant.parse("2026-09-25T20:00:00Z"), "{\"aceptada\":false,\"pendiente\":true}");
+				1L, "mateo", "solicitud", false, Instant.parse("2026-09-25T20:00:00Z"),
+				"{\"aceptada\":false,\"pendiente\":true}", "https://cdn.example/mateo.png");
 		PageResponse<NotificacionResponse> pagina =
 				new PageResponse<>(List.of(notificacion), 0, 20, 1, 1, true, true, false);
 		when(service.listaNotificaciones(eq("ana"), any())).thenReturn(pagina);
@@ -74,14 +75,15 @@ class NotificacionGrpcControllerTest {
 		assertThat(respuesta.getContent(0).getLeida()).isFalse();
 		assertThat(respuesta.getContent(0).getCreatedAt()).isEqualTo("2026-09-25T20:00:00Z");
 		assertThat(respuesta.getContent(0).getMeta()).isEqualTo("{\"aceptada\":false,\"pendiente\":true}");
+		assertThat(respuesta.getContent(0).getAvatarRemitente()).isEqualTo("https://cdn.example/mateo.png");
 		assertThat(respuesta.getTotalElements()).isEqualTo(1);
 		assertThat(respuesta.getFirst()).isTrue();
 	}
 
 	@Test
-	void listaNotificaciones_sinRemitenteNiMeta_noTraeEsosCampos() {
+	void listaNotificaciones_sinRemitenteNiMetaNiAvatar_noTraeEsosCampos() {
 		NotificacionResponse notificacion = new NotificacionResponse(
-				2L, null, "sistema", true, Instant.parse("2026-09-25T20:00:00Z"), null);
+				2L, null, "sistema", true, Instant.parse("2026-09-25T20:00:00Z"), null, null);
 		PageResponse<NotificacionResponse> pagina =
 				new PageResponse<>(List.of(notificacion), 0, 20, 1, 1, true, true, false);
 		when(service.listaNotificaciones(eq("ana"), any())).thenReturn(pagina);
@@ -91,6 +93,22 @@ class NotificacionGrpcControllerTest {
 
 		assertThat(respuesta.getContent(0).hasRemitente()).isFalse();
 		assertThat(respuesta.getContent(0).hasMeta()).isFalse();
+		assertThat(respuesta.getContent(0).hasAvatarRemitente()).isFalse();
+	}
+
+	@Test
+	void listaNotificaciones_remitenteSinAvatar_noTraeElCampoAvatar() {
+		NotificacionResponse notificacion = new NotificacionResponse(
+				3L, "mateo", "solicitud", false, Instant.parse("2026-09-25T20:00:00Z"), null, null);
+		PageResponse<NotificacionResponse> pagina =
+				new PageResponse<>(List.of(notificacion), 0, 20, 1, 1, true, true, false);
+		when(service.listaNotificaciones(eq("ana"), any())).thenReturn(pagina);
+
+		ListaNotificacionesResponse respuesta = stub.listaNotificaciones(
+				ListaNotificacionesRequest.newBuilder().setReceptor("ana").build());
+
+		assertThat(respuesta.getContent(0).getRemitente()).isEqualTo("mateo");
+		assertThat(respuesta.getContent(0).hasAvatarRemitente()).isFalse();
 	}
 
 	@Test
@@ -108,7 +126,8 @@ class NotificacionGrpcControllerTest {
 	@Test
 	void actualizarLeida_conIdExistente_delegaEnElServicioYDevuelveElItemActualizado() {
 		NotificacionResponse actualizada = new NotificacionResponse(
-				1L, "mateo", "solicitud", true, Instant.parse("2026-09-25T20:00:00Z"), "{\"aceptada\":false,\"pendiente\":true}");
+				1L, "mateo", "solicitud", true, Instant.parse("2026-09-25T20:00:00Z"),
+				"{\"aceptada\":false,\"pendiente\":true}", "https://cdn.example/mateo.png");
 		when(service.actualizarLeida(1L, true)).thenReturn(actualizada);
 
 		NotificacionItem respuesta = stub.actualizarLeida(
@@ -117,6 +136,7 @@ class NotificacionGrpcControllerTest {
 		assertThat(respuesta.getId()).isEqualTo(1L);
 		assertThat(respuesta.getLeida()).isTrue();
 		assertThat(respuesta.getMeta()).isEqualTo("{\"aceptada\":false,\"pendiente\":true}");
+		assertThat(respuesta.getAvatarRemitente()).isEqualTo("https://cdn.example/mateo.png");
 	}
 
 	@Test
