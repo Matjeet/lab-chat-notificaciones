@@ -28,6 +28,9 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 @EntityListeners(AuditingEntityListener.class)
 public class Notificacion {
 
+	/** Debe coincidir con {@code @Size(max = 500)} de {@code RegistroRequest#avatar} en chat-registro. */
+	public static final int LONGITUD_MAXIMA_AVATAR = 500;
+
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
@@ -37,6 +40,15 @@ public class Notificacion {
 
 	@Column(length = 50)
 	private String remitente;
+
+	/**
+	 * Avatar de {@code remitente} (enlace http(s) o etiqueta {@code <Blobatar .../>}, tal como lo
+	 * guarda chat-registro), para que quien lista las notificaciones lo pinte sin otra consulta.
+	 * Nulo si no hay remitente, si no eligio avatar, o si el mensaje de RabbitMQ no lo trae (solo
+	 * viaja en una solicitud nueva). Tamano igual que {@code usuarios.avatar} en chat-registro.
+	 */
+	@Column(name = "avatar_remitente", length = Notificacion.LONGITUD_MAXIMA_AVATAR)
+	private String avatarRemitente;
 
 	@Column(nullable = false, length = 50)
 	private String receptor;
